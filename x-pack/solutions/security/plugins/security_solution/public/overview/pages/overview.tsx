@@ -43,6 +43,7 @@ import { useSelectedPatterns } from '../../data_view_manager/hooks/use_selected_
 import { useDataView } from '../../data_view_manager/hooks/use_data_view';
 import { useIsExperimentalFeatureEnabled } from '../../common/hooks/use_experimental_features';
 import { PageLoader } from '../../common/components/page_loader';
+import { OneChatTest } from '../../common/components/onechat_test/onechat_test';
 
 const OverviewComponent = () => {
   const getGlobalFiltersQuerySelector = useMemo(
@@ -102,6 +103,10 @@ const OverviewComponent = () => {
       <EuiScreenReaderOnly>
         <h1>{OVERVIEW}</h1>
       </EuiScreenReaderOnly>
+
+      <EuiFlexItem grow={false}>
+        <OneChatTest />
+      </EuiFlexItem>
 
       {indicesExist ? (
         <>

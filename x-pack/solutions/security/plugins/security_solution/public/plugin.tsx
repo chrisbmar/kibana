@@ -252,11 +252,19 @@ export class Plugin implements IPlugin<PluginSetup, PluginStart, SetupPlugins, S
     this.services.start(core, plugins);
     this.registerFleetExtensions(core, plugins);
     this.registerPluginUpdates(core, plugins); // Not awaiting to prevent blocking start execution
+    this.setupOneChatIntegration(plugins.onechat);
     return this.contract.getStartContract(core);
   }
 
   public stop() {
     this.services.stop();
+  }
+
+  private setupOneChatIntegration(oneChat?: StartPlugins['onechat']) {
+    if (!oneChat) return;
+
+    // Store OneChat reference for use in Security components
+    this.services.setOneChat(oneChat);
   }
 
   public async registerDiscoverSharedFeatures(plugins: SetupPlugins) {

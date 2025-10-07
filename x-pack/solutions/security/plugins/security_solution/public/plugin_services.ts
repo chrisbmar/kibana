@@ -160,6 +160,7 @@ export class PluginServices {
       topValuesPopover: new TopValuesPopoverService(),
       productDocBase: startPlugins.productDocBase,
       siemMigrations,
+      onechat: this.oneChat,
       ...(params && {
         onAppLeave: params.onAppLeave,
         setHeaderActionMenu: params.setHeaderActionMenu,
@@ -192,4 +193,14 @@ export class PluginServices {
       query,
     };
   };
+
+  private oneChat?: StartPlugins['onechat'];
+
+  public setOneChat(oneChat: StartPlugins['onechat']) {
+    this.oneChat = oneChat;
+  }
+
+  public getOneChat() {
+    return this.oneChat;
+  }
 }
