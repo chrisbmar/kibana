@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import React from 'react';
+import ReactDOM from 'react-dom';
 import {
   type CoreSetup,
   type CoreStart,
@@ -13,6 +15,8 @@ import {
 } from '@kbn/core/public';
 import type { Logger } from '@kbn/logging';
 import { AGENT_BUILDER_ENABLED_SETTING_ID } from '@kbn/management-settings-ids';
+import { KibanaContextProvider } from '@kbn/kibana-react-plugin/public';
+import { toMountPoint } from '@kbn/react-kibana-mount';
 import { ONECHAT_FEATURE_ID, uiPrivileges } from '../common/features';
 import { docLinks } from '../common/doc_links';
 import { registerAnalytics, registerApp, registerManagementSection } from './register';
@@ -24,8 +28,10 @@ import type {
   OnechatPluginStart,
   OnechatSetupDependencies,
   OnechatStartDependencies,
+  OneChatFlyoutOptions,
 } from './types';
 import { createPublicToolContract } from './services/tools';
+import { OneChatNavButton } from './application/components/onechat_nav_button/onechat_nav_button';
 
 import { registerLocators } from './locator/register_locators';
 
@@ -99,8 +105,52 @@ export class OnechatPlugin
       startDependencies,
     };
 
+    // Register OneChat button in the header navigation
+    core.chrome.navControls.registerRight({
+      order: 1000, // Place it before the AI Assistant button (order 1001)
+      mount: (target) => {
+        return this.mountOneChatButton(target, core, startDependencies);
+      },
+    });
+
     return {
       tools: createPublicToolContract({ toolsService }),
+      openFlyout: (options = {}) => {
+        this.openOneChatFlyout(core, options);
+      },
     };
+  }
+
+  private mountOneChatButton(
+    targetDomElement: HTMLElement,
+    coreStart: CoreStart,
+    _startDependencies: OnechatStartDependencies
+  ) {
+    ReactDOM.render(
+      <KibanaContextProvider services={coreStart}>
+        <OneChatNavButton />
+      </KibanaContextProvider>,
+      targetDomElement
+    );
+
+    return () => ReactDOM.unmountComponentAtNode(targetDomElement);
+  }
+
+  private openOneChatFlyout(core: CoreStart, options: OneChatFlyoutOptions) {
+    import('./application/components/onechat_flyout/onechat_flyout').then(
+      ({ OneChatFlyoutContent }) => {
+        const flyout = core.overlays.openFlyout(
+          toMountPoint(
+            <OneChatFlyoutContent onClose={() => flyout.close()} context={options.context} />,
+            core
+          ),
+          {
+            size: 'm',
+            maxWidth: 'calc(100% - 20px)',
+            'data-test-subj': 'onechat-flyout',
+          }
+        );
+      }
+    );
   }
 }

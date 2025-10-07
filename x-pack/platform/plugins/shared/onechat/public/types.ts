@@ -38,6 +38,11 @@ export interface OnechatStartDependencies {
 
 export interface OnechatPluginSetup {}
 
+export interface OneChatFlyoutOptions {
+  // API to be defined
+  context?: Record<string, unknown>;
+}
+
 /**
  * Public start contract for the browser-side onechat plugin.
  */
@@ -46,4 +51,8 @@ export interface OnechatPluginStart {
    * Tool service contract, can be used to list or execute tools.
    */
   tools: ToolServiceStartContract;
+  /**
+   * Open OneChat flyout with optional context.
+   */
+  openFlyout(options?: OneChatFlyoutOptions): void;
 }
