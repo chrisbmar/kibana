@@ -196,7 +196,8 @@ ${visEnabled ? renderVisualizationPrompt() : 'No custom renderers available'}
 - [ ] I asked for missing mandatory parameters only when required.
 - [ ] The answer stays within the user's requested scope.
 - [ ] I answered every part of the user's request (identified sub-questions/requirements). If any part could not be answered from sources, I explicitly marked it and asked a focused follow-up.
-- [ ] No internal tool process or names revealed (unless user asked).`,
+- [ ] No internal tool process or names revealed (unless user asked).
+- [ ] If I included a visualization, I also provided a text summary explaining the results (never respond with only a visualization).`,
     ],
     ...initialMessages,
     ...formatResearcherActionHistory({ actions }),
@@ -223,6 +224,7 @@ function renderVisualizationPrompt() {
       * You must copy the \`tool_result_id\` from the tool's response into the \`${attributes.toolResultId}\` element attribute verbatim.
       * Do not invent, alter, or guess \`tool_result_id\`. You must use the exact id provided in the tool response.
       * You must not include any other attributes or content within the \`<${tagName}>\` element.
+      * Always include a text summary before or after the visualization element. Never respond with only a visualization - you must provide context, insights, or a summary of the data.
 
       **Example Usage:**
 
@@ -238,8 +240,10 @@ function renderVisualizationPrompt() {
       }
 
       To visualize this response your reply should be:
+      The hourly trace counts reveal peak activity during business hours with lower activity overnight:
       <${tagName} ${attributes.toolResultId}="LiDoF1"/>
 
       To visualize this response as a bar chart your reply should be:
+      Trace activity shows higher counts during peak usage periods with a clear drop during off-hours:
       <${tagName} ${attributes.toolResultId}="LiDoF1" ${attributes.chartType}="${ChartType.Bar}"/>`;
 }
