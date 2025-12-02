@@ -39,6 +39,7 @@ export const RoundInput = ({ input }: RoundInputProps) => {
     background: ${backgroundColorStyle.background};
     ${euiTextBreakWord()}
     border-radius: ${`${ROUNDED_BORDER_RADIUS_LARGE} ${ROUNDED_BORDER_RADIUS_LARGE} 0 ${ROUNDED_BORDER_RADIUS_LARGE}`};
+    white-space: pre-wrap;
   `;
 
   return (
