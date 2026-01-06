@@ -8,17 +8,18 @@
 import type { CriteriaWithPagination } from '@elastic/eui';
 import {
   type EuiBasicTableColumn,
+  EuiCheckbox,
   EuiFlexGroup,
   EuiFlexItem,
   EuiHighlight,
   EuiInMemoryTable,
-  type EuiInMemoryTableProps,
   EuiPanel,
   EuiText,
+  useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { Tool as McpTool } from '@kbn/mcp-client';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { labels } from '../../../utils/i18n';
 import { truncateAtSentence } from '../../../utils/truncate_at_sentence';
 import { McpToolsSelectionTableHeader } from './mcp_tools_selection_table_header';
@@ -55,13 +56,9 @@ export const McpToolsSelectionTable: React.FC<McpToolsSelectionTableProps> = ({
   isDisabled,
   disabledMessage,
 }) => {
+  const { euiTheme } = useEuiTheme();
   const [tablePageIndex, setTablePageIndex] = useState(0);
   const [tablePageSize, setTablePageSize] = useState(DEFAULT_PAGE_SIZE);
-
-  // Track when "select all" is active to prevent the table's internal selection
-  // mechanism from limiting selection to only the visible page items.
-  // Using a ref to avoid stale closure issues in the selection change callback.
-  const isSelectAllActiveRef = useRef(false);
 
   const {
     searchConfig,
@@ -74,13 +71,70 @@ export const McpToolsSelectionTable: React.FC<McpToolsSelectionTableProps> = ({
     setTablePageIndex(0);
   }, [filteredTools]);
 
-  const selectedMcpTools = useMemo(() => {
-    const selectedNames = new Set(selectedTools.map((tool) => tool.name));
-    return tools.filter((tool) => selectedNames.has(tool.name));
+  const { selectedNames, selectedMcpTools } = useMemo(() => {
+    const names = new Set(selectedTools.map((tool) => tool.name));
+    return {
+      selectedNames: names,
+      selectedMcpTools: tools.filter((tool) => names.has(tool.name)),
+    };
   }, [tools, selectedTools]);
+
+  const handleToggleTool = useCallback(
+    (tool: McpTool) => {
+      if (selectedNames.has(tool.name)) {
+        onChange(selectedMcpTools.filter((t) => t.name !== tool.name));
+      } else {
+        onChange([...selectedMcpTools, tool]);
+      }
+    },
+    [selectedNames, selectedMcpTools, onChange]
+  );
+
+  // Current page selection state
+  const currentPageItems = filteredTools.slice(
+    tablePageIndex * tablePageSize,
+    (tablePageIndex + 1) * tablePageSize
+  );
+  const allPageSelected =
+    currentPageItems.length > 0 && currentPageItems.every((t) => selectedNames.has(t.name));
+  const somePageSelected =
+    !allPageSelected && currentPageItems.some((t) => selectedNames.has(t.name));
+
+  const handleTogglePageSelection = useCallback(() => {
+    const pageNames = new Set(currentPageItems.map((t) => t.name));
+    if (allPageSelected) {
+      onChange(selectedMcpTools.filter((t) => !pageNames.has(t.name)));
+    } else {
+      onChange([
+        ...selectedMcpTools,
+        ...currentPageItems.filter((t) => !selectedNames.has(t.name)),
+      ]);
+    }
+  }, [currentPageItems, allPageSelected, selectedMcpTools, selectedNames, onChange]);
 
   const columns: Array<EuiBasicTableColumn<McpTool>> = useMemo(
     () => [
+      {
+        field: 'selected',
+        name: (
+          <EuiCheckbox
+            id="select-page-tools"
+            checked={allPageSelected}
+            indeterminate={somePageSelected}
+            disabled={isDisabled || currentPageItems.length === 0}
+            onChange={handleTogglePageSelection}
+          />
+        ),
+        width: euiTheme.size.xl,
+        render: (_: unknown, tool: McpTool) => (
+          <EuiCheckbox
+            id={`select-tool-${tool.name}`}
+            checked={selectedNames.has(tool.name)}
+            onChange={() => handleToggleTool(tool)}
+            disabled={isDisabled}
+          />
+        ),
+      },
       {
         field: 'name',
         name: labels.tools.bulkImportMcp.sourceSection.nameColumn,
@@ -110,21 +164,17 @@ export const McpToolsSelectionTable: React.FC<McpToolsSelectionTableProps> = ({
         },
       },
     ],
-    [searchQuery]
-  );
-
-  const handleSelectionChange = useCallback(
-    (newSelection: McpTool[]) => {
-      // When "select all" is active, the table fires onSelectionChange twice:
-      // once with all items, then again limiting to visible page items.
-      // Ignore the second call that would reduce the selection.
-      if (isSelectAllActiveRef.current && newSelection.length < tools.length) {
-        isSelectAllActiveRef.current = false;
-        return;
-      }
-      onChange(newSelection);
-    },
-    [onChange, tools.length]
+    [
+      allPageSelected,
+      somePageSelected,
+      currentPageItems.length,
+      handleTogglePageSelection,
+      selectedNames,
+      isDisabled,
+      handleToggleTool,
+      searchQuery,
+      euiTheme.size.xl,
+    ]
   );
 
   const handleClearSelection = useCallback(() => {
@@ -132,19 +182,8 @@ export const McpToolsSelectionTable: React.FC<McpToolsSelectionTableProps> = ({
   }, [onChange]);
 
   const handleSelectAll = useCallback(() => {
-    isSelectAllActiveRef.current = true;
     onChange([...tools]);
   }, [onChange, tools]);
-
-  const selection: EuiInMemoryTableProps<McpTool>['selection'] = useMemo(
-    () => ({
-      selectable: () => !isDisabled,
-      selectableMessage: () => '',
-      onSelectionChange: handleSelectionChange,
-      selected: selectedMcpTools,
-    }),
-    [isDisabled, handleSelectionChange, selectedMcpTools]
-  );
 
   const emptyMessage = useMemo(() => {
     if (isLoading) {
@@ -180,7 +219,6 @@ export const McpToolsSelectionTable: React.FC<McpToolsSelectionTableProps> = ({
         items={filteredTools}
         columns={columns}
         itemId="name"
-        selection={selection}
         search={searchConfig}
         onTableChange={({ page }: CriteriaWithPagination<McpTool>) => {
           if (page) {
