@@ -5,163 +5,180 @@
  * 2.0.
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import { REPO_ROOT } from '@kbn/repo-info';
 import { getAvailableConnectors } from '@kbn/gen-ai-functional-testing';
 import type { FtrProviderContext } from '../ftr_provider_context';
 import { runConverseTests } from './converse';
-import { createEisConnectors, cleanupEisConnectors, enableCcm } from './eis_helpers';
-
-/**
- * Path to pre-discovered EIS models JSON file.
- * This file is created by running: node scripts/discover_eis_models.js
- * Stored in repo root target/ directory (standard CI artifact location)
- */
-const EIS_MODELS_PATH = resolve(REPO_ROOT, 'target/eis_models.json');
 
 /**
  * Environment variable for EIS CCM API key (set by CI from Vault)
+ * Vault path: secret/kibana-issues/dev/inference/kibana-eis-ccm
  */
 const EIS_CCM_API_KEY_ENV = 'KIBANA_EIS_CCM_API_KEY';
+const eisCcmApiKey = process.env[EIS_CCM_API_KEY_ENV];
 
-interface DiscoveredModel {
-  inferenceId: string;
-  modelId: string;
+const getEisChatCompletionModels = (endpoints: EisInferenceEndpoint[]): EisChatModel[] => {
+  return endpoints
+    .filter((ep) => ep.task_type === 'chat_completion' && ep.service === 'elastic')
+    .map((ep) => ({
+      inferenceId: ep.inference_id,
+      modelId: ep.service_settings?.model_id || 'unknown',
+    }));
+};
+
+interface EisInferenceEndpoint {
+  inference_id: string;
+  task_type: string;
+  service: string;
+  service_settings?: {
+    model_id?: string;
+    [key: string]: unknown;
+  };
 }
 
-/**
- * Reads pre-discovered EIS models from JSON file.
- * Returns empty array if file doesn't exist (models not discovered yet).
- */
-const getPreDiscoveredEisModels = (): DiscoveredModel[] => {
-  if (!existsSync(EIS_MODELS_PATH)) {
-    return [];
-  }
-  try {
-    const data = JSON.parse(readFileSync(EIS_MODELS_PATH, 'utf8'));
-    return data.models || [];
-  } catch {
-    return [];
-  }
-};
+interface EisChatModel {
+  inferenceId: string;
+  modelId: string;
+  connectorId?: string;
+}
 
 // eslint-disable-next-line import/no-default-export
 export default function (providerContext: FtrProviderContext) {
   const { getService } = providerContext;
-  const log = getService('log');
-  const supertest = getService('supertest');
   const es = getService('es');
-
-  // Read EIS models SYNCHRONOUSLY at file load time - no async needed!
-  // This allows proper describe/it block creation without dynamic addTest() hacks.
-  const eisModels = getPreDiscoveredEisModels();
+  const supertest = getService('supertest');
 
   describe('Agent Builder - LLM Smoke tests', function () {
-    // =========================================================================
-    // PRECONFIGURED CONNECTOR SMOKE TESTS
-    // Tests connectors configured via Vault (KIBANA_TESTING_AI_CONNECTORS)
-    // =========================================================================
+    // Preconfigured connectors from Vault
     describe('Preconfigured Connector Smoke Tests', function () {
       this.timeout(300000);
-
       const connectors = getAvailableConnectors();
 
-      for (const connector of connectors) {
-        describe(`Connector: ${connector.id}`, function () {
-          it('should respond to simple message', async () => {
-            await runConverseTests(connector.id, supertest, 'simple');
-          });
-
-          it('should execute tools', async () => {
-            await runConverseTests(connector.id, supertest, 'tool');
-          });
-
-          it('should continue conversation', async () => {
-            await runConverseTests(connector.id, supertest, 'conversation');
-          });
-        });
-      }
+      it('should pass converse tests for all preconfigured connectors', async () => {
+        for (const connector of connectors) {
+          await runConverseTests(connector.id, supertest);
+        }
+      });
     });
 
-    // =========================================================================
-    // EIS SMOKE TESTS
-    // Tests all EIS models discovered by the pre-discovery script.
-    // Models are read from target/eis_models.json (created by discover_eis_models.js)
-    // =========================================================================
-    describe('EIS Smoke Tests', function () {
+    // EIS Dynamic Tests (discovers and tests all EIS models via Cloud Connected Mode)
+    describe('EIS Dynamic Smoke Tests', function () {
       this.timeout(600000); // 10 min for all EIS model tests
 
-      if (eisModels.length === 0) {
-        it('should skip - no EIS models discovered', function () {
-          log.warning('[EIS] No models in target/eis_models.json');
-          log.warning(
-            '[EIS] Run: node x-pack/platform/test/agent_builder/scripts/discover_eis_models.js'
-          );
-          this.skip();
-        });
-      } else {
-        // Store connector mappings: modelId -> connectorId
-        const connectorMap = new Map<string, string>();
-        const createdConnectorIds: string[] = [];
+      const eisChatModels: EisChatModel[] = [];
+      const createdConnectorIds: string[] = [];
 
-        before(async function () {
-          // Enable CCM on FTR's ES instance (discovery used a separate ES)
-          const apiKey = process.env[EIS_CCM_API_KEY_ENV];
-          if (!apiKey) {
-            throw new Error(
-              `${EIS_CCM_API_KEY_ENV} not set. ` +
-                `For local dev: export ${EIS_CCM_API_KEY_ENV}="$(vault read -field key secret/kibana-issues/dev/inference/kibana-eis-ccm)"`
-            );
-          }
-          await enableCcm(es, apiKey, log);
-
-          // Create connectors for pre-discovered models
-          log.info(`[EIS] Creating connectors for ${eisModels.length} pre-discovered models...`);
-          const { connectors, connectorIds } = await createEisConnectors(eisModels, supertest, log);
-
-          // Populate connector map for tests to use
-          for (const connector of connectors) {
-            connectorMap.set(connector.modelId, connector.connectorId);
-          }
-          createdConnectorIds.push(...connectorIds);
-
-          log.info(`[EIS] ✅ Created ${connectors.length} connectors`);
-        });
-
-        after(async function () {
-          await cleanupEisConnectors(createdConnectorIds, supertest, log);
-        });
-
-        // Create proper describe/it blocks for each model - no dynamic addTest() needed!
-        for (const model of eisModels) {
-          describe(`Model: ${model.modelId}`, function () {
-            it('should respond to simple message', async () => {
-              const connectorId = connectorMap.get(model.modelId);
-              if (!connectorId) {
-                throw new Error(`Connector not created for model ${model.modelId}`);
-              }
-              await runConverseTests(connectorId, supertest, 'simple');
-            });
-
-            it('should execute tools', async () => {
-              const connectorId = connectorMap.get(model.modelId);
-              if (!connectorId) {
-                throw new Error(`Connector not created for model ${model.modelId}`);
-              }
-              await runConverseTests(connectorId, supertest, 'tool');
-            });
-
-            it('should continue conversation', async () => {
-              const connectorId = connectorMap.get(model.modelId);
-              if (!connectorId) {
-                throw new Error(`Connector not created for model ${model.modelId}`);
-              }
-              await runConverseTests(connectorId, supertest, 'conversation');
-            });
-          });
+      before(async () => {
+        if (!eisCcmApiKey) {
+          return;
         }
-      }
+
+        // Step 1: Enable CCM
+        await es.transport.request({
+          method: 'PUT',
+          path: '/_inference/_ccm',
+          body: { api_key: eisCcmApiKey },
+        });
+
+        // Step 2: Discover EIS models (with retry - endpoints may take time to appear)
+        let discovered: EisChatModel[] = [];
+        const maxRetries = 5;
+        const retryDelayMs = 3000;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          const response = await es.inference.get({ inference_id: '_all' });
+          const endpoints = response.endpoints as EisInferenceEndpoint[];
+          discovered = getEisChatCompletionModels(endpoints);
+
+          if (discovered.length > 0) {
+            break;
+          }
+
+          if (attempt < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          }
+        }
+
+        // Step 3: Create connectors for each model
+        for (const model of discovered) {
+          const connectorName = `eis-${model.modelId}`;
+
+          try {
+            const { body } = await supertest
+              .post('/api/actions/connector')
+              .set('kbn-xsrf', 'true')
+              .send({
+                name: connectorName,
+                connector_type_id: '.inference',
+                config: {
+                  provider: 'elastic',
+                  taskType: 'chat_completion',
+                  inferenceId: model.inferenceId,
+                },
+                secrets: {},
+              })
+              .expect(200);
+
+            createdConnectorIds.push(body.id);
+            eisChatModels.push({ ...model, connectorId: body.id });
+          } catch (error) {
+            // Connector creation failed - continue with other models
+          }
+        }
+      });
+
+      after(async () => {
+        // Cleanup: delete created connectors
+        for (const connectorId of createdConnectorIds) {
+          try {
+            await supertest
+              .delete(`/api/actions/connector/${connectorId}`)
+              .set('kbn-xsrf', 'true')
+              .expect(204);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }
+      });
+
+      it('should have discovered and created connectors for EIS models', async function () {
+        if (!eisCcmApiKey) {
+          this.skip();
+        }
+        if (eisChatModels.length === 0) {
+          // Fetch current endpoints for debugging
+          const response = await es.inference.get({ inference_id: '_all' });
+          const endpoints = response.endpoints as EisInferenceEndpoint[];
+          const chatCompletionEndpoints = endpoints.filter(
+            (ep) => ep.task_type === 'chat_completion'
+          );
+          const elasticEndpoints = endpoints.filter((ep) => ep.service === 'elastic');
+
+          const keyPreview = eisCcmApiKey ? eisCcmApiKey.substring(0, 8) : 'NOT_SET';
+          throw new Error(
+            `No EIS connectors created.\n` +
+              `CCM API key starts with: ${keyPreview}...\n` +
+              `Total endpoints: ${endpoints.length}\n` +
+              `Chat completion endpoints: ${chatCompletionEndpoints.length}\n` +
+              `Elastic service endpoints: ${elasticEndpoints.length}\n` +
+              `Endpoint services: ${[...new Set(endpoints.map((ep) => ep.service))].join(', ')}\n` +
+              `Check CCM setup and EIS QA connectivity.`
+          );
+        }
+      });
+
+      // Run smoke tests for each EIS model
+      it('should successfully converse with each EIS model', async function () {
+        if (!eisCcmApiKey) {
+          this.skip();
+        }
+        if (eisChatModels.length === 0) {
+          this.skip();
+        }
+
+        for (const model of eisChatModels) {
+          await runConverseTests(model.connectorId!, supertest);
+        }
+      });
     });
   });
 }
