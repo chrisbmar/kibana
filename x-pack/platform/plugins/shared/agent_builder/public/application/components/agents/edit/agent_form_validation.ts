@@ -13,6 +13,7 @@ import {
 } from '@kbn/agent-builder-common/base/namespaces';
 import { z } from '@kbn/zod';
 import { isValidAgentAvatarColor } from '../../../utils/color';
+import { isValidAvatarSymbol } from '../../../utils/avatar_symbol';
 
 export const agentFormSchema = z.object({
   id: z
@@ -70,12 +71,12 @@ export const agentFormSchema = z.object({
     ),
   avatar_symbol: z
     .string()
-    .max(2, {
+    .optional()
+    .refine((value) => !value || isValidAvatarSymbol(value), {
       message: i18n.translate('xpack.agentBuilder.agents.form.avatarSymbolMaxLengthError', {
-        defaultMessage: 'Avatar symbol must be 2 characters or less.',
+        defaultMessage: 'Avatar symbol must be a single emoji or up to 2 letters.',
       }),
-    })
-    .optional(),
+    }),
   configuration: z.object({
     instructions: z.string().optional(),
     tools: z.array(

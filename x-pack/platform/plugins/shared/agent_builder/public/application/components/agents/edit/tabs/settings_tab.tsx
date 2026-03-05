@@ -31,6 +31,7 @@ import { useAgentLabels } from '../../../../hooks/agents/use_agent_labels';
 import { useKibana } from '../../../../hooks/use_kibana';
 import { WorkflowPicker } from '../../../tools/form/components/workflow/workflow_picker';
 import { isPreExecutionWorkflowEnabled } from '../../../../utils/is_pre_execution_workflow_enabled';
+import { truncateAvatarSymbol } from '../../../../utils/avatar_symbol';
 import type { AgentFormData } from '../agent_form';
 
 interface AgentSettingsTabProps {
@@ -331,7 +332,7 @@ export const AgentSettingsTab: React.FC<AgentSettingsTabProps> = ({
                     'xpack.agentBuilder.agents.form.settings.presentationAvatarDescription',
                     {
                       defaultMessage:
-                        "Customize the agent's avatar color and symbol (emoji or 2-letter code) to help visually distinguish and identify it in the UI.",
+                        "Customize the agent's avatar color and symbol (single emoji or up to 2 letters) to help visually distinguish and identify it in the UI.",
                     }
                   )}
                 </EuiText>
@@ -450,8 +451,7 @@ export const AgentSettingsTab: React.FC<AgentSettingsTabProps> = ({
                     <EuiFieldText
                       {...rest}
                       onChange={(event) => {
-                        const value = event.target.value;
-                        rest.onChange(value.slice(0, 2));
+                        rest.onChange(truncateAvatarSymbol(event.target.value));
                       }}
                       inputRef={ref}
                       disabled={isFormDisabled}
