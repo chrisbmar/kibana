@@ -9,6 +9,8 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom-v5-compat';
 
 import {
+  EuiDraggable,
+  EuiDroppable,
   EuiFlexGroup,
   EuiFlexItem,
   EuiLoadingSpinner,
@@ -34,6 +36,7 @@ interface ConversationListProps {
   currentConversationId: string | undefined;
   isNewConversationRoute: boolean;
   onItemClick?: () => void;
+  pinnedConversationIds?: Set<string>;
 }
 
 export const ConversationList: React.FC<ConversationListProps> = ({
@@ -41,16 +44,17 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   currentConversationId,
   isNewConversationRoute,
   onItemClick,
+  pinnedConversationIds,
 }) => {
   const { euiTheme } = useEuiTheme();
   const { conversations = [], isLoading } = useConversationList({ agentId });
 
   const sortedConversations = useMemo(
     () =>
-      [...conversations].sort(
-        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      ),
-    [conversations]
+      [...conversations]
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .filter((c) => !pinnedConversationIds?.has(c.id)),
+    [conversations, pinnedConversationIds]
   );
 
   const linkStyles = createConversationListItemStyles(euiTheme);
@@ -66,30 +70,42 @@ export const ConversationList: React.FC<ConversationListProps> = ({
     );
   }
 
-  // If there are no conversations, show 1 mock conversation item that links to the new conversation route
+  // Keep CHATS droppable present even when empty so pinned items can be dropped back
   if (sortedConversations.length === 0) {
     return (
-      <EuiFlexGroup direction="column" gutterSize="xs">
-        <EuiFlexItem grow={false}>
-          <Link
-            to={appPaths.agent.conversations.new({ agentId })}
-            css={isNewConversationRoute ? activeLinkStyles : linkStyles}
-            data-test-subj="agentBuilderSidebarConversation-new"
-            onClick={onItemClick}
-          >
-            <EuiTextTruncate text={newConversationLabel} />
-          </Link>
-        </EuiFlexItem>
-      </EuiFlexGroup>
+      <EuiDroppable droppableId="CHATS" spacing="none" grow={false}>
+        <EuiFlexGroup direction="column" gutterSize="xs">
+          <EuiFlexItem grow={false}>
+            <Link
+              to={appPaths.agent.conversations.new({ agentId })}
+              css={isNewConversationRoute ? activeLinkStyles : linkStyles}
+              data-test-subj="agentBuilderSidebarConversation-new"
+              onClick={onItemClick}
+            >
+              <EuiTextTruncate text={newConversationLabel} />
+            </Link>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+      </EuiDroppable>
     );
   }
 
   return (
-    <EuiFlexGroup direction="column" gutterSize="xs">
-      {sortedConversations.map((conversation) => {
+    <EuiDroppable
+      droppableId="CHATS"
+      spacing="none"
+      grow={false}
+      style={{ display: 'flex', flexDirection: 'column', gap: euiTheme.size.xs }}
+    >
+      {sortedConversations.map((conversation, index) => {
         const isActive = currentConversationId === conversation.id;
         return (
-          <EuiFlexItem grow={false} key={conversation.id}>
+          <EuiDraggable
+            key={conversation.id}
+            draggableId={conversation.id}
+            index={index}
+            spacing="none"
+          >
             <ConversationListItemRow
               agentId={agentId}
               conversationId={conversation.id}
@@ -98,9 +114,9 @@ export const ConversationList: React.FC<ConversationListProps> = ({
               routeConversationId={currentConversationId}
               onItemClick={onItemClick}
             />
-          </EuiFlexItem>
+          </EuiDraggable>
         );
       })}
-    </EuiFlexGroup>
+    </EuiDroppable>
   );
 };

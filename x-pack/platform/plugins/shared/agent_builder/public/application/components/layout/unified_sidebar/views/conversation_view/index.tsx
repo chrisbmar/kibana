@@ -5,11 +5,13 @@
  * 2.0.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import type { DropResult } from '@hello-pangea/dnd';
 
 import {
   EuiButton,
+  EuiDragDropContext,
   EuiFlexGroup,
   EuiFlexItem,
   EuiHorizontalRule,
@@ -35,10 +37,12 @@ import { useValidateAgentId } from '../../../../../hooks/agents/use_validate_age
 import { useAgentBuilderAgents } from '../../../../../hooks/agents/use_agents';
 import { useLastAgentId } from '../../../../../hooks/use_last_agent_id';
 import { useConversationList } from '../../../../../hooks/use_conversation_list';
+import { usePinnedConversations } from '../../../../../hooks/use_pinned_conversations';
 import { SidebarNavList } from '../../shared/sidebar_nav_list';
 
 import { ConversationFooter } from './conversation_footer';
 import { ConversationList } from './conversation_list';
+import { PinnedConversationList } from './pinned_conversation_list';
 import { ConversationSearchModal } from '../../../../conversations/conversation_search_modal';
 
 const customizeLabel = i18n.translate('xpack.agentBuilder.sidebar.conversation.customize', {
@@ -61,6 +65,10 @@ const chatsLabel = i18n.translate('xpack.agentBuilder.sidebar.conversation.chats
   defaultMessage: 'Chats',
 });
 
+const pinnedLabel = i18n.translate('xpack.agentBuilder.sidebar.conversation.pinned', {
+  defaultMessage: 'Pinned',
+});
+
 const conversationListScrollRegionLabel = i18n.translate(
   'xpack.agentBuilder.sidebar.conversation.conversationListScrollRegion',
   {
@@ -81,6 +89,43 @@ export const ConversationSidebarView: React.FC = () => {
 
   const { conversations = [] } = useConversationList({ agentId });
   const hasConversations = conversations.length > 0;
+
+  const { isPinned, pinConversation, unpinConversation } = usePinnedConversations();
+
+  const sortedConversations = useMemo(
+    () =>
+      [...conversations].sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      ),
+    [conversations]
+  );
+
+  const pinnedConversations = useMemo(
+    () => sortedConversations.filter((c) => isPinned(c.id)),
+    [sortedConversations, isPinned]
+  );
+
+  const pinnedConversationIds = useMemo(
+    () => new Set(pinnedConversations.map((c) => c.id)),
+    [pinnedConversations]
+  );
+
+  const onDragEnd = useCallback(
+    ({ source, destination }: DropResult) => {
+      if (!destination) return;
+      if (source.droppableId === destination.droppableId) return;
+
+      if (source.droppableId === 'CHATS' && destination.droppableId === 'PINNED') {
+        const unpinnedConversations = sortedConversations.filter((c) => !isPinned(c.id));
+        const conversation = unpinnedConversations[source.index];
+        if (conversation) pinConversation(conversation.id);
+      } else if (source.droppableId === 'PINNED' && destination.droppableId === 'CHATS') {
+        const conversation = pinnedConversations[source.index];
+        if (conversation) unpinConversation(conversation.id);
+      }
+    },
+    [sortedConversations, pinnedConversations, isPinned, pinConversation, unpinConversation]
+  );
 
   const isNewConversationRoute =
     conversationId === newConversationId || pathname === appPaths.agent.root({ agentId });
@@ -175,68 +220,87 @@ export const ConversationSidebarView: React.FC = () => {
                 </EuiFlexItem>
 
                 <EuiFlexItem grow className="eui-fullHeight">
-                  <EuiFlexGroup
-                    direction="column"
-                    gutterSize="none"
-                    responsive={false}
-                    className="eui-fullHeight"
-                  >
-                    <EuiFlexItem grow={false}>
-                      <EuiText size="xs" color="subdued" css={sectionLabelCss}>
-                        {chatsLabel}
-                      </EuiText>
-                      <EuiSpacer size="s" />
-                    </EuiFlexItem>
-
-                    <EuiFlexItem grow={false}>
-                      <EuiFlexGroup gutterSize="s" responsive={false} alignItems="flexStart">
-                        <EuiFlexItem grow>
-                          <EuiButton
-                            fullWidth
-                            iconType="plus"
-                            size="s"
-                            color="text"
-                            onClick={handlePressNewConversation}
-                            data-test-subj="agentBuilderSidebarNewConversationButton"
-                          >
-                            {newLabel}
-                          </EuiButton>
-                        </EuiFlexItem>
-                        <EuiFlexItem grow>
-                          <EuiButton
-                            fullWidth
-                            iconType="search"
-                            size="s"
-                            color="text"
-                            aria-label={searchChatsAriaLabel}
-                            onClick={() => setIsSearchModalOpen(true)}
-                            disabled={!hasConversations}
-                            data-test-subj="agentBuilderSidebarSearchChatsButton"
-                          >
-                            {searchLabel}
-                          </EuiButton>
-                        </EuiFlexItem>
-                      </EuiFlexGroup>
-                    </EuiFlexItem>
-
-                    <EuiFlexItem grow={false}>
-                      <EuiSpacer size="m" />
-                    </EuiFlexItem>
-
-                    <EuiFlexItem
-                      grow
-                      tabIndex={0}
-                      role="region"
-                      aria-label={conversationListScrollRegionLabel}
-                      className="eui-yScroll"
+                  <EuiDragDropContext onDragEnd={onDragEnd}>
+                    <EuiFlexGroup
+                      direction="column"
+                      gutterSize="none"
+                      responsive={false}
+                      className="eui-fullHeight"
                     >
-                      <ConversationList
-                        agentId={agentId}
-                        currentConversationId={conversationId}
-                        isNewConversationRoute={isNewConversationRoute}
-                      />
-                    </EuiFlexItem>
-                  </EuiFlexGroup>
+                      <EuiFlexItem grow={false}>
+                        <EuiText size="xs" color="subdued" css={sectionLabelCss}>
+                          {pinnedLabel}
+                        </EuiText>
+                        <EuiSpacer size="xs" />
+                        <PinnedConversationList
+                          agentId={agentId}
+                          currentConversationId={conversationId}
+                          pinnedConversations={pinnedConversations}
+                        />
+                      </EuiFlexItem>
+
+                      <EuiFlexItem grow={false}>
+                        <EuiSpacer size="m" />
+                      </EuiFlexItem>
+
+                      <EuiFlexItem grow={false}>
+                        <EuiText size="xs" color="subdued" css={sectionLabelCss}>
+                          {chatsLabel}
+                        </EuiText>
+                        <EuiSpacer size="s" />
+                      </EuiFlexItem>
+
+                      <EuiFlexItem grow={false}>
+                        <EuiFlexGroup gutterSize="s" responsive={false} alignItems="flexStart">
+                          <EuiFlexItem grow>
+                            <EuiButton
+                              fullWidth
+                              iconType="plus"
+                              size="s"
+                              color="text"
+                              onClick={handlePressNewConversation}
+                              data-test-subj="agentBuilderSidebarNewConversationButton"
+                            >
+                              {newLabel}
+                            </EuiButton>
+                          </EuiFlexItem>
+                          <EuiFlexItem grow>
+                            <EuiButton
+                              fullWidth
+                              iconType="search"
+                              size="s"
+                              color="text"
+                              aria-label={searchChatsAriaLabel}
+                              onClick={() => setIsSearchModalOpen(true)}
+                              disabled={!hasConversations}
+                              data-test-subj="agentBuilderSidebarSearchChatsButton"
+                            >
+                              {searchLabel}
+                            </EuiButton>
+                          </EuiFlexItem>
+                        </EuiFlexGroup>
+                      </EuiFlexItem>
+
+                      <EuiFlexItem grow={false}>
+                        <EuiSpacer size="m" />
+                      </EuiFlexItem>
+
+                      <EuiFlexItem
+                        grow
+                        tabIndex={0}
+                        role="region"
+                        aria-label={conversationListScrollRegionLabel}
+                        className="eui-yScroll"
+                      >
+                        <ConversationList
+                          agentId={agentId}
+                          currentConversationId={conversationId}
+                          isNewConversationRoute={isNewConversationRoute}
+                          pinnedConversationIds={pinnedConversationIds}
+                        />
+                      </EuiFlexItem>
+                    </EuiFlexGroup>
+                  </EuiDragDropContext>
                 </EuiFlexItem>
               </EuiFlexGroup>
             </EuiPanel>

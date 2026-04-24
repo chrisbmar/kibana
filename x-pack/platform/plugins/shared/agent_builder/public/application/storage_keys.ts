@@ -10,6 +10,7 @@ export const storageKeys = {
   lastUsedConnector: 'agentBuilder.lastUsedConnector',
   welcomeMessageDismissed: 'agentBuilder.welcomeMessageDismissed',
   autoIncludeWarningDismissed: 'agentBuilder.autoIncludeWarningDismissed',
+  pinnedConversations: 'agentBuilder.pinnedConversations',
 
   getLastConversationKey: (sessionTag?: string, agentId?: string): string => {
     const tag = sessionTag || 'default';
