@@ -12,6 +12,10 @@ import { css } from '@emotion/react';
 import { i18n } from '@kbn/i18n';
 import type { ConversationWithoutRounds } from '@kbn/agent-builder-common';
 
+import {
+  usePinnedConversations,
+  type ConversationStatus,
+} from '../../../../../hooks/use_pinned_conversations';
 import { ConversationListItemRow } from './conversation_list_item_row';
 
 const dragToPinLabel = i18n.translate('xpack.agentBuilder.sidebar.pinned.dragToPin', {
@@ -32,6 +36,7 @@ export const PinnedConversationList: React.FC<PinnedConversationListProps> = ({
   onItemClick,
 }) => {
   const { euiTheme } = useEuiTheme();
+  const { getMetadata } = usePinnedConversations();
 
   const emptyDropTargetStyles = css`
     border: 1px dashed ${euiTheme.colors.borderBasePlain};
@@ -65,6 +70,7 @@ export const PinnedConversationList: React.FC<PinnedConversationListProps> = ({
     >
       {pinnedConversations.map((conversation, index) => {
         const isActive = currentConversationId === conversation.id;
+        const status: ConversationStatus = getMetadata(conversation.id)?.status ?? 'read';
         return (
           <EuiDraggable
             key={conversation.id}
@@ -79,6 +85,7 @@ export const PinnedConversationList: React.FC<PinnedConversationListProps> = ({
               isActive={isActive}
               routeConversationId={currentConversationId}
               onItemClick={onItemClick}
+              status={status}
             />
           </EuiDraggable>
         );

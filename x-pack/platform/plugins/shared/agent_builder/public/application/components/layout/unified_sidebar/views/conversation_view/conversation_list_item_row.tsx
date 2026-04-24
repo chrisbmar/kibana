@@ -30,6 +30,9 @@ import {
 } from '../../../../conversations/conversation_list_item_styles';
 import { BaseDeleteConversationModal } from '../../../../conversations/delete_conversation_modal';
 import { BaseRenameConversationModal } from '../../../../conversations/rename_conversation_modal';
+import type { ConversationStatus } from '../../../../../hooks/use_pinned_conversations';
+import { usePinnedConversations } from '../../../../../hooks/use_pinned_conversations';
+import { ConversationStatusIndicator } from './conversation_status_indicator';
 
 const ACTIONS_CLASS = 'agentBuilderSidebarConversationListRowActions';
 
@@ -46,6 +49,12 @@ const labels = {
   actionsMenu: i18n.translate('xpack.agentBuilder.sidebar.conversationList.actionsMenu', {
     defaultMessage: 'Conversation actions',
   }),
+  markAsRead: i18n.translate('xpack.agentBuilder.sidebar.conversationList.markAsRead', {
+    defaultMessage: 'Mark as read',
+  }),
+  markAsUnread: i18n.translate('xpack.agentBuilder.sidebar.conversationList.markAsUnread', {
+    defaultMessage: 'Mark as unread',
+  }),
 };
 
 export interface ConversationListItemRowProps {
@@ -55,6 +64,7 @@ export interface ConversationListItemRowProps {
   isActive: boolean;
   routeConversationId: string | undefined;
   onItemClick?: () => void;
+  status: ConversationStatus;
 }
 
 export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = ({
@@ -64,6 +74,7 @@ export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = (
   isActive,
   routeConversationId,
   onItemClick,
+  status,
 }) => {
   const { euiTheme } = useEuiTheme();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
@@ -73,6 +84,7 @@ export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = (
   const { deleteConversation, renameConversation } = useConversationListMutations({
     routeConversationId,
   });
+  const { setConversationStatus } = usePinnedConversations();
 
   const closePopover = useCallback(() => setIsPopoverOpen(false), []);
   const togglePopover = useCallback(() => setIsPopoverOpen((open) => !open), []);
@@ -130,8 +142,22 @@ export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = (
     opacity: 0;
   `;
 
+  const isUnread = status === 'unread';
+
   const menuItems = useMemo(
     () => [
+      <EuiContextMenuItem
+        key="readToggle"
+        icon={isUnread ? 'check' : 'email'}
+        size="s"
+        data-test-subj={`agentBuilderSidebarConversationReadToggle-${conversationId}`}
+        onClick={() => {
+          closePopover();
+          setConversationStatus(conversationId, isUnread ? 'read' : 'unread');
+        }}
+      >
+        {isUnread ? labels.markAsRead : labels.markAsUnread}
+      </EuiContextMenuItem>,
       <EuiContextMenuItem
         key="rename"
         icon="pencil"
@@ -160,7 +186,7 @@ export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = (
         {labels.delete}
       </EuiContextMenuItem>,
     ],
-    [closePopover, conversationId, euiTheme.colors.danger]
+    [closePopover, conversationId, euiTheme.colors.danger, isUnread, setConversationStatus]
   );
 
   const menuButton = (
@@ -188,6 +214,15 @@ export const ConversationListItemRow: React.FC<ConversationListItemRowProps> = (
         css={rowStyles}
         data-test-subj={`agentBuilderSidebarConversationRow-${conversationId}`}
       >
+        <EuiFlexItem
+          grow={false}
+          css={css`
+            padding-left: 4px;
+          `}
+        >
+          <ConversationStatusIndicator status={status} />
+        </EuiFlexItem>
+
         <EuiFlexItem
           grow
           css={css`

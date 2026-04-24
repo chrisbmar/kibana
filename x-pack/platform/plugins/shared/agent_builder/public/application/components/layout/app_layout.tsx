@@ -12,6 +12,7 @@ import { css } from '@emotion/react';
 import { KibanaPageTemplate } from '@kbn/shared-ux-page-kibana-template';
 import { isMac } from '@kbn/shared-ux-utility';
 
+import { ConversationMetadataProvider } from '../../context/conversation_metadata/conversation_metadata_context';
 import {
   CONDENSED_SIDEBAR_WIDTH,
   SIDEBAR_WIDTH,
@@ -45,7 +46,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   `;
 
   return (
-    <>
+    <ConversationMetadataProvider>
       <EuiWindowEvent event="keydown" handler={onKeyDown} />
       <KibanaPageTemplate
         paddingSize="none"
@@ -66,6 +67,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           {children}
         </KibanaPageTemplate.Section>
       </KibanaPageTemplate>
-    </>
+    </ConversationMetadataProvider>
   );
 };

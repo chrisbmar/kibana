@@ -29,6 +29,7 @@ import { useAgentBuilderServices } from '../../hooks/use_agent_builder_service';
 import { mutationKeys } from '../../mutation_keys';
 import { usePendingMessageState } from './use_pending_message_state';
 import { useSubscribeToChatEvents } from './use_subscribe_to_chat_events';
+import { usePinnedConversations } from '../../hooks/use_pinned_conversations';
 import { BrowserToolExecutor } from '../../services/browser_tool_executor';
 
 interface UseSendMessageMutationProps {
@@ -129,6 +130,8 @@ export const useSendMessageMutation = ({ connectorId }: UseSendMessageMutationPr
     return new BrowserToolExecutor(services.notifications?.toasts);
   }, [services.notifications?.toasts]);
 
+  const { setConversationStatus } = usePinnedConversations();
+
   const {
     pendingMessageState: { pendingMessage },
     setPendingMessage,
@@ -218,6 +221,11 @@ export const useSendMessageMutation = ({ connectorId }: UseSendMessageMutationPr
         throw new Error('Message is required');
       }
       setIsResponseLoading(true);
+      // Mark the conversation as streaming so the sidebar indicator updates.
+      // Only applies to existing conversations — new conversations have no ID yet.
+      if (conversationId) {
+        setConversationStatus(conversationId, 'streaming');
+      }
     },
     onSettled: () => {
       conversationActions.invalidateConversation();

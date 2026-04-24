@@ -90,7 +90,8 @@ export const ConversationSidebarView: React.FC = () => {
   const { conversations = [] } = useConversationList({ agentId });
   const hasConversations = conversations.length > 0;
 
-  const { isPinned, pinConversation, unpinConversation } = usePinnedConversations();
+  const { isPinned, pinConversation, unpinConversation, setConversationStatus, getMetadata } =
+    usePinnedConversations();
 
   const sortedConversations = useMemo(
     () =>
@@ -171,6 +172,18 @@ export const ConversationSidebarView: React.FC = () => {
     validateAgentId,
     navigateToAgentBuilderUrl,
   ]);
+
+  useEffect(() => {
+    if (conversationId && conversationId !== newConversationId) {
+      // Only clear the unread indicator — never overwrite awaiting_prompt or streaming
+      if (getMetadata(conversationId)?.status === 'unread') {
+        setConversationStatus(conversationId, 'read');
+      }
+    }
+    // getMetadata is a plain function closing over reactive state; intentionally omitted
+    // from deps so this only fires on navigation, not on every status change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, setConversationStatus]);
 
   const handlePressNewConversation = () => {
     navigateToAgentBuilderUrl(appPaths.agent.conversations.new({ agentId }));

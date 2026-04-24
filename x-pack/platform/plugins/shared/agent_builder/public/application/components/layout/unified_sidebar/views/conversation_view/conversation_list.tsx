@@ -24,6 +24,8 @@ import {
   createConversationListItemStyles,
   createActiveConversationListItemStyles,
 } from '../../../../conversations/conversation_list_item_styles';
+import { usePinnedConversations } from '../../../../../hooks/use_pinned_conversations';
+import type { ConversationStatus } from '../../../../../hooks/use_pinned_conversations';
 import { ConversationListItemRow } from './conversation_list_item_row';
 
 const newConversationLabel = i18n.translate(
@@ -48,6 +50,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
 }) => {
   const { euiTheme } = useEuiTheme();
   const { conversations = [], isLoading } = useConversationList({ agentId });
+  const { getMetadata } = usePinnedConversations();
 
   const sortedConversations = useMemo(
     () =>
@@ -99,6 +102,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
     >
       {sortedConversations.map((conversation, index) => {
         const isActive = currentConversationId === conversation.id;
+        const status: ConversationStatus = getMetadata(conversation.id)?.status ?? 'read';
         return (
           <EuiDraggable
             key={conversation.id}
@@ -113,6 +117,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
               isActive={isActive}
               routeConversationId={currentConversationId}
               onItemClick={onItemClick}
+              status={status}
             />
           </EuiDraggable>
         );

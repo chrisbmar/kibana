@@ -21,6 +21,7 @@ import {
   isCompactionCompletedEvent,
   isBackgroundAgentCompleteEvent,
   ConversationRoundStepType,
+  ConversationRoundStatus,
 } from '@kbn/agent-builder-common';
 import {
   createReasoningStep,
@@ -31,6 +32,10 @@ import { finalize, type Observable, type Subscription } from 'rxjs';
 import { isBrowserToolCallEvent } from '@kbn/agent-builder-common/chat/events';
 import { useRef } from 'react';
 import { useConversationContext } from '../conversation/conversation_context';
+import {
+  usePinnedConversations,
+  type ConversationStatus,
+} from '../../hooks/use_pinned_conversations';
 import type { BrowserToolExecutor } from '../../services/browser_tool_executor';
 
 export const useSubscribeToChatEvents = ({
@@ -44,9 +49,22 @@ export const useSubscribeToChatEvents = ({
   isAborted: () => boolean;
   browserToolExecutor?: BrowserToolExecutor;
 }) => {
-  const { conversationActions, browserApiTools } = useConversationContext();
+  const { conversationActions, browserApiTools, conversationId } = useConversationContext();
+  const { setConversationStatus } = usePinnedConversations();
   const unsubscribedRef = useRef(false);
   const subscriptionRef = useRef<Subscription | null>(null);
+
+  // nextChatEvent is a plain closure — it captures conversationId at render time.
+  // For new conversations, conversationId is undefined until isConversationCreatedEvent fires,
+  // at which point React state hasn't propagated yet. Keep a ref so we can update it
+  // synchronously within the stream and always read the latest value.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+
+  // When a new conversation is started, isRoundCompleteEvent fires BEFORE
+  // isConversationCreatedEvent, so conversationIdRef.current is still undefined
+  // at the time we want to write the status. Buffer it here and flush when the ID arrives.
+  const pendingStatusRef = useRef<ConversationStatus | null>(null);
 
   const unsubscribeFromChatEvents = () => {
     unsubscribedRef.current = true;
@@ -127,10 +145,29 @@ export const useSubscribeToChatEvents = ({
       const { tool_call_id: toolCallId, results } = event.data;
       conversationActions.setToolCallResult({ results, toolCallId });
     } else if (isRoundCompleteEvent(event)) {
-      // Now we have the full response and can stop the loading indicators
       setIsResponseLoading(false);
+      const { status } = event.data.round;
+      const nextStatus =
+        status === ConversationRoundStatus.awaitingPrompt
+          ? ('awaiting_prompt' as const)
+          : status === ConversationRoundStatus.completed
+          ? ('read' as const)
+          : null;
+      if (nextStatus) {
+        if (conversationIdRef.current) {
+          setConversationStatus(conversationIdRef.current, nextStatus);
+        } else {
+          // isConversationCreatedEvent hasn't fired yet — buffer and flush when it does
+          pendingStatusRef.current = nextStatus;
+        }
+      }
     } else if (isConversationCreatedEvent(event)) {
       const { conversation_id: id, title } = event.data;
+      conversationIdRef.current = id;
+      if (pendingStatusRef.current) {
+        setConversationStatus(id, pendingStatusRef.current);
+        pendingStatusRef.current = null;
+      }
       conversationActions.onConversationCreated({ conversationId: id, title });
     } else if (isThinkingCompleteEvent(event)) {
       conversationActions.setTimeToFirstToken({

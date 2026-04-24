@@ -15,6 +15,7 @@ import {
   conversationElementWidthStyles,
 } from './conversation.styles';
 import { useConversationContext } from '../../context/conversation/conversation_context';
+import { UnreadConversationsList } from './unread_conversations_list';
 
 const titleStyles = css`
   font-weight: 400;
@@ -22,7 +23,7 @@ const titleStyles = css`
 
 export const NewConversationPrompt: React.FC<{}> = () => {
   const { euiTheme } = useEuiTheme();
-  const { isEmbeddedContext } = useConversationContext();
+  const { isEmbeddedContext, agentId } = useConversationContext();
 
   const centerFlexItemStyles = css`
     justify-content: center;
@@ -59,6 +60,15 @@ export const NewConversationPrompt: React.FC<{}> = () => {
       >
         <ConversationInput />
       </EuiFlexItem>
+
+      {!isEmbeddedContext && agentId ? (
+        <EuiFlexItem
+          grow={false}
+          css={[conversationElementWidthStyles, conversationElementPaddingStyles]}
+        >
+          <UnreadConversationsList agentId={agentId} />
+        </EuiFlexItem>
+      ) : null}
     </EuiFlexGroup>
   );
 };
